@@ -6,4 +6,5 @@ setup(
     description='generic sql wrapper',
     scripts=['sqlwrapper.py', ],
     author='Edem Tsalah',
+    url='https://www.twitter.com/etsalah',
     author_email='edem.tsalah@gmail.com')
