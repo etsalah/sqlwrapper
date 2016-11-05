@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='sqlwrapper',
-    version='0.0.6',
+    version='0.0.7',
     description='generic sql wrapper',
     packages=['sqlwrapper', ],
     author='Edem Tsalah',
