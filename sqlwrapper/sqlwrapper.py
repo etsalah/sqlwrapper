@@ -86,7 +86,7 @@ def execute_non_query(query=None, parameters=None, connection_config=None):
     and return True if it succeeded or false otherwise
     Args:
         query (str): The query to be executed
-        parameters (dict): The list of parameters that need to by passed to
+        parameters (Any): The list of parameters that need to by passed to
             execute command
         connection_config (dict): The configuration to get a connection to the
             db
@@ -118,7 +118,7 @@ def execute_non_query(query=None, parameters=None, connection_config=None):
 
 
 def execute_query(
-    query=None, columns=(), parameters=(), connection_config=None):
+        query=None, columns=(), parameters=(), connection_config=None):
     """This method is responsible for executing a query that is expected to
     return (a) value(s) to the caller
     ~~~~~~
@@ -191,7 +191,7 @@ def validate_limits(index, limit):
 
 
 def where_builder(
-    index=0, limit=DEFAULT_MAX_ROWS, columns=(), order_by=('id desc',)):
+        index=0, limit=DEFAULT_MAX_ROWS, columns=(), order_by=('id desc',)):
     """This method is responsible for constructing the tail end (where and
     order by sections) of a query to be executed
     ~~~~~~
