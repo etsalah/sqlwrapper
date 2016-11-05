@@ -1,3 +1,5 @@
 .env
 .idea
 sample.py
+dist
+sqlwrapper.egg-info
