@@ -5,10 +5,13 @@ Last updated on September 29, 2015
 @author: etsalah
 @version: 0.0.6
 """
+import os
 
 CONNECTION_DETAILS = {
-    'db_type': 'MYSQL', 'host': 'localhost', 'username': 'root',
-    'password': 'edem', 'database': 'sample'}
+    'db_type': 'MYSQL', 'host': os.environ['DB_HOST'],
+    'username': os.environ['DB_USERNAME'],
+    'password': os.environ['DB_PASSWORD'],
+    'database': os.environ['DB_NAME']}
 
 DEFAULT_MAX_ROWS = 0
 
