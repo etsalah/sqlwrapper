@@ -121,18 +121,15 @@ def execute_query(
         query=None, columns=(), parameters=(), connection_config=None):
     """This method is responsible for executing a query that is expected to
     return (a) value(s) to the caller
-    ~~~~~~
-    arg(s)
-    ~~~~~~
-    query       ->  The query to be executed
-    columns     ->  The columns to be returned from the query if successful
-    parameters  ->  The parameters that need to be sent to execute along with
-                    the query
-    ~~~~~~~~~
-    return(s)
-    ~~~~~~~~~
-    results     ->  A list of the results of the executions of the query
-                    represented as a list of dictionaries
+    Args:
+        query(str): The query to be executed
+        columns(tuple): The columns to be returned from the query if successful
+        parameters(any): The parameters that need to be sent to execute along
+            with the query
+        connection_config(dict): the details to use to create a connection
+    Returns:
+        results(list[dict]):  A list of the results of the executions of the
+            query represented as a list of dictionaries
     """
     results = []
     conn = None
@@ -160,17 +157,12 @@ def execute_query(
 def validate_limits(index, limit):
     """This method is used to validate if the index(offset) and limit provided
     for a query a valid or not
-    ~~~~~~
-    arg(s)
-    ~~~~~~
-    index(offset)   ->  The number of rows to skip
-    limit           ->  The number of rows to return from the query result
-    ~~~~~~
-    return
-    ~~~~~~
-    return          ->  Returns true if both the index(offset) and limit are
-                        valid. False if limit is zero or raises TypeError
-                        otherwise
+    Args:
+        index(int): The number of rows to skip
+        limit(int): The number of rows to return from the query result
+    Returns:
+        result(bool): Returns true if both the index(offset) and limit are
+            valid. False if limit is zero or raises TypeError otherwise
     """
     result = True
     try:
@@ -194,19 +186,15 @@ def where_builder(
         index=0, limit=DEFAULT_MAX_ROWS, columns=(), order_by=('id desc',)):
     """This method is responsible for constructing the tail end (where and
     order by sections) of a query to be executed
-    ~~~~~~
-    arg(s)
-    ~~~~~~
-    index(offset)   ->  The number of rows to skip
-    limit           ->  The number of rows to return from query
-    columns         ->  The list of columns that need to be in the where section
-                        of the query
-    order_by        ->  The list of columns plus their ordering (asc, desc) to
-                        put in the order by section of the query
-    ~~~~~~~~~
-    return(s)
-    ~~~~~~~~~
-    query           ->  This is the resulting tail section of the query
+    Args:
+        index(int): The number of rows to skip
+        limit(int): The number of rows to return from query
+        columns(tuple): The list of columns that need to be in the where section
+            of the query
+        order_by(tuple): The list of columns plus their ordering (asc, desc) to
+            put in the order by section of the query
+    Returns:
+    query(str): This is the resulting tail section of the query
     """
     and_ = False
     pieces = ()
@@ -243,26 +231,24 @@ def where_builder(
 def create_objects(cls_, results, columns=()):
     """This method is responsible for creating a list of objects from the class,
     results and columns that are passed to it.
-    ~~~~~~
-    arg(s)
-    ~~~~~~
-    cls_        ->  The name of the class of which objects need to be created
-    results     ->  A list of results as a list of dictionaries
-    columns     ->  A tuple of column names (keys in the list of dictionaries)
-                    that also double as the name of fields in the class
-    ~~~~~~~~~
-    return(s)
-    ~~~~~~~~~
-    objs         -> A list of instances of cls_ or an empty list
+
+    Args:
+        cls_(callable): The name of the class of which objects need to be
+            created
+        results(list[dict]):  A list of results as a list of dictionaries
+        columns(tuples): A tuple of column names (keys in the list of
+            dictionaries) that also double as the name of fields in the class
+    Returns:
+        objects(list[Any]):  A list of instances of cls_ or an empty list
     """
-    objs = []
+    objects = []
     if len(results) > 0:
         for result in results:
             tmp = cls_()
             for column in columns:
                 setattr(tmp, column, result.get(column, None))
-            objs.append(tmp)
-    return objs
+            objects.append(tmp)
+    return objects
 
 
 def get_filters(table, columns=(), args=None, connection_config=None):
@@ -291,7 +277,7 @@ def get_filters(table, columns=(), args=None, connection_config=None):
 
     for column in columns:
         query = 'select distinct(%s) from %s' % (column, table)
-        keys = args.keys()
+        keys = tuple(args.keys())
         parameters = args.values()
         query += where_builder(0, 0, keys)
         records = execute_query(query, (column,), parameters, connection_config)
@@ -300,3 +286,53 @@ def get_filters(table, columns=(), args=None, connection_config=None):
             if record[column]:
                 results[column].append(record[column])
     return results
+
+
+def list_objects(table, cls, args=None, limits=None, connection_config=None):
+    """This function is responsible for returning a list of rows, that match
+    the arguments in args
+
+    Args:
+        table(str): name of the table or collection where data is currently
+            saved
+        cls(callable): The class whose instances should be created with the data
+            returned from the database
+        args(dict): column value pair to use to filter the data returned
+        limits(dict): Arguments to use for pagination. Contains before an offset
+            and a limit
+        connection_config(dict): The connection details that can be passed into
+            the function to use rather then the default that could be hard coded
+    Returns:
+        results(list[Any]): List of the instance of the class stored in cls
+    """
+    query = (
+        "select * from %s %s" % (
+            table, where_builder(
+                limits.get('offset', 0), limits.get(
+                    'limit', DEFAULT_MAX_ROWS), tuple(args.keys()))))
+    tmp_results = execute_query(
+        query, cls.COLUMNS, args.values(), connection_config)
+    return create_objects(cls, tmp_results, cls.COLUMNS)
+
+
+def count_objects(table, args=None, connection_config=None):
+    """This function is responsible for returning the number of objects that
+    match the args that are passed in
+
+    Args:
+        table(str): The name of a table or view that we need to count objects
+            from
+        args(dict): The column, value pair to use to count the rows
+        connection_config(dict): The details to use to connect to the database
+    Returns:
+        count(int)
+    """
+    query = (
+        "select count(*) as row_count from %s %s" % (
+            table, where_builder(0, 1, tuple(args.keys()))))
+    results = execute_query(
+        query, ('row_count', ), args.values(), connection_config)
+    count = 0
+    for row in results:
+        count = row['row_count']
+    return count
