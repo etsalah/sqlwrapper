@@ -3,3 +3,5 @@
 sample.py
 dist
 sqlwrapper.egg-info
+__pycache__
+app.py

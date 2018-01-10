@@ -8,14 +8,23 @@ Last updated on September 29, 2015
 import os
 
 CONNECTION_DETAILS = {
-    'db_type': 'MYSQL', 'host': os.environ['DB_HOST'],
-    'username': os.environ['DB_USERNAME'],
-    'password': os.environ['DB_PASSWORD'],
-    'database': os.environ['DB_NAME']}
+    'DBM_TYPE': 'MYSQL'
+}
 
 DEFAULT_MAX_ROWS = 0
 
-SUPPORTED_RDBMS = ('MYSQL', 'SQLITE')
+SUPPORTED_RDBMS = ('MYSQL', 'SQLITE', 'POSTGRES')
+
+
+def get_default_config():
+    config_dict = {}
+    for key in ['DB_HOST', 'DB_USERNAME', 'DB_PASSWORD', 'DB_NAME']:
+        if os.environ.get(key):
+            config_dict.update({key: os.environ[key]})
+
+    CONNECTION_DETAILS.update(config_dict)
+
+    return CONNECTION_DETAILS
 
 
 def get_connection(connection_config=None):
@@ -34,37 +43,43 @@ def get_connection(connection_config=None):
             not supported
         Exception: if an error occurrs during the connection process
     """
-    if connection_config:
-        CONNECTION_DETAILS.update(connection_config)
 
-    db_type = CONNECTION_DETAILS.get('db_type', None)
+    if not connection_config:
+        connection_config = {}
 
-    if db_type not in SUPPORTED_RDBMS:
+    connection_config.update(get_default_config())
+    dbm_type = connection_config['DBM_TYPE']
+
+    if dbm_type not in SUPPORTED_RDBMS:
         raise NotImplementedError(
-            "This library doesn't currently support the %s RDBMS" % db_type)
+            "This library doesn't currently support the %s RDBMS" % dbm_type)
 
     try:
-        if db_type == 'MYSQL':
-            import MySQLdb
+        if dbm_type == 'MYSQL':
+            try:
+                import MySQLdb
+            except ImportError:
+                import pymysql as MySQLdb
+
             my_db = MySQLdb
 
             conn = my_db.connect(
-                CONNECTION_DETAILS['host'], CONNECTION_DETAILS['username'],
-                CONNECTION_DETAILS['password'],
-                CONNECTION_DETAILS['database'])
+                connection_config['DB_HOST'], connection_config['DB_USERNAME'],
+                connection_config['DB_PASSWORD'], connection_config['DB_NAME']
+            )
 
             cursor = conn.cursor(my_db.cursors.DictCursor)
 
-        elif db_type == 'SQLITE':
+        elif dbm_type == 'SQLITE':
             import sqlite3 as lite
-            db_file = CONNECTION_DETAILS.get('db_file', ':memory:')
+            db_file = connection_config.get('db_file', ':memory:')
             conn = lite.connect(db_file)
             conn.row_factory = lite.Row
             cursor = conn.cursor()
 
         else:
             raise NotImplementedError(
-                "Add implementation details for %s" % db_type)
+                "Add implementation details for %s" % dbm_type)
     except Exception as e:
         print('connection \n~~~~~~~~~~~\n%s' % e)
         raise e
@@ -118,12 +133,11 @@ def execute_non_query(query=None, parameters=None, connection_config=None):
 
 
 def execute_query(
-        query=None, columns=(), parameters=(), connection_config=None):
+        query=None, parameters=(), connection_config=None):
     """This method is responsible for executing a query that is expected to
     return (a) value(s) to the caller
     Args:
         query(str): The query to be executed
-        columns(tuple): The columns to be returned from the query if successful
         parameters(any): The parameters that need to be sent to execute along
             with the query
         connection_config(dict): the details to use to create a connection
@@ -131,7 +145,6 @@ def execute_query(
         results(list[dict]):  A list of the results of the executions of the
             query represented as a list of dictionaries
     """
-    results = []
     conn = None
     try:
         conn, cursor = get_connection(connection_config)
@@ -139,19 +152,13 @@ def execute_query(
             cursor.execute(query, parameters)
         else:
             cursor.execute(query)
-        rows = cursor.fetchall()
-        for row in rows:
-            obj_ = {}
-            for column in columns:
-                obj_[column] = row[column]
-            results.append(obj_)
+        return cursor.fetchall()
     except Exception as e:
         print('execute query \n~~~~~~~~~~~~~~~~\n%s' % e)
         raise e
     finally:
         if conn:
             conn.close()
-    return results
 
 
 def validate_limits(index, limit):
@@ -173,7 +180,7 @@ def validate_limits(index, limit):
             raise Exception("limit can't be a negative number")
 
         if limit == 0:
-            result = False
+            raise Exception("limit can't be set to zero")
 
     except TypeError:
         raise Exception("Make sure that sure that index and limit are numbers")
@@ -278,9 +285,9 @@ def get_filters(table, columns=(), args=None, connection_config=None):
     for column in columns:
         query = 'select distinct(%s) from %s' % (column, table)
         keys = tuple(args.keys())
-        parameters = args.values()
+        parameters = list(args.values())
         query += where_builder(0, 0, keys)
-        records = execute_query(query, (column,), parameters, connection_config)
+        records = execute_query(query, parameters, connection_config)
         results[column] = []
         for record in records:
             if record[column]:
@@ -305,13 +312,20 @@ def list_objects(table, cls, args=None, limits=None, connection_config=None):
     Returns:
         results(list[Any]): List of the instance of the class stored in cls
     """
+    if not limits:
+        limits = {}
+
     query = (
         "select * from %s %s" % (
             table, where_builder(
-                limits.get('offset', 0), limits.get(
-                    'limit', DEFAULT_MAX_ROWS), tuple(args.keys()))))
-    tmp_results = execute_query(
-        query, cls.COLUMNS, args.values(), connection_config)
+                limits.get('offset', 0),
+                limits.get('limit', DEFAULT_MAX_ROWS),
+                tuple(args.keys())
+            )
+        )
+    )
+
+    tmp_results = execute_query(query, list(args.values()), connection_config)
     return create_objects(cls, tmp_results, cls.COLUMNS)
 
 
@@ -327,11 +341,13 @@ def count_objects(table, args=None, connection_config=None):
     Returns:
         count(int)
     """
+    if not args:
+        args = {}
+
     query = (
         "select count(*) as row_count from %s %s" % (
             table, where_builder(0, 1, tuple(args.keys()))))
-    results = execute_query(
-        query, ('row_count', ), args.values(), connection_config)
+    results = execute_query(query, list(args.values()), connection_config)
     count = 0
     for row in results:
         count = row['row_count']
