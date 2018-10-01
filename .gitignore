@@ -5,3 +5,4 @@ dist
 sqlwrapper.egg-info
 __pycache__
 app.py
+sdist
